@@ -288,7 +288,7 @@ SCassist_analyze_and_annotate_L <- function(all_markers, top_genes = 30,
     )
 
     print(paste0("SCassistant is analyzing markers to predict cell types for cluster : ",cluster_num,collapse = ""))
-    cluster_summaries[[cluster_num]] <- response1$message$content
+    cluster_summaries[[cluster_num]] <- response1[[1]]$message$content
   }
 
   # Create an empty data frame
