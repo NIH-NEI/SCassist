@@ -26,7 +26,7 @@
 * **LLM-Powered Insights:** Leverage the power of LLMs to interpret complex data, uncover hidden patterns, and generate insightful summaries and explanations.
 * **Intuitive Interface:** Easy-to-use functions with clear documentation and examples, making advanced analysis accessible to researchers of all levels.
 * **Confidential:** Option to use a local LLM server to keep your data and analysis confidential.
-* **Cost effective:** If taking advantage of google models, use pay-as-you-go low cost API call options.
+* **Cost effective:** If taking advantage of google or openai models, use pay-as-you-go low cost API call options.
 
 ### **Installation:**
 
@@ -58,6 +58,9 @@ pull_model("llama3")
 * SCassist Remote Google Server Setup - obtain api-key following the instructions here:
 https://ai.google.dev/gemini-api/docs/api-key
 
+* SCassist Remote OpenAI Server Setup - obtain api-key following the instructions here:
+https://platform.openai.com/api-keys
+
 ### **Example Usage:**
 
 **Download example data:** [NK, CD4+ and CD8+ T cells from LCMV infected Ifng - CTCF binding site mutant mice - GSM6625298_scRNA_LCMV_Day4_CD4_CD8_NK_WT_filtered_feature_bc_matrix.h5](https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSM6625299&format=file&file=GSM6625299%5FscRNA%5FLCMV%5FDay4%5FCD4%5FCD8%5FNK%5FKO%5Ffiltered%5Ffeature%5Fbc%5Fmatrix%2Eh5)
@@ -79,6 +82,9 @@ api_key_file = "api_key_from_google.txt"
 
 # Recommend quality control filters using Gemini (online)
 qc_recommendations <- SCassist_analyze_quality("KO", llm_server="google", api_key_file = api_key_file)
+
+# Recommend quality control filters using OpenAi GPT model (online)
+qc_recommendations <- SCassist_analyze_quality("KO", llm_server="openai", api_key_file = api_key_file)
 
 # Recommend quality control filters using Llama3 (local)
 qc_recommendations <- SCassist_analyze_quality("KO", llm_server="ollama")
