@@ -5,3 +5,8 @@
 .RDataTmp
 .Rhistory
 .Rapp.history
+.Rproj.user
+renv
+renv.lock
+SCassist2.Rproj
+

@@ -18,9 +18,10 @@
 #'                  max_output_tokens = 10048,
 #'                  model_G = "gemini-1.5-flash-latest",
 #'                  model_O = "llama3",
+#'                  model_C = "gpt-4o-mini",
 #'                  api_key_file = "api_keys.txt",
 #'                  model_params = list(seed = 42,temperature = 0, num_gpu = 0))
-#' @param llm_server The LLM server to use. Options are "google" or "ollama". Default is "google".
+#' @param llm_server The LLM server to use. Options are "google" or "ollama" or "openai". Default is "google".
 #' @param seurat_object_name The name of the Seurat object containing the
 #'  single-cell RNA-seq data. The object should be accessible in the current
 #'  environment and should have either `scTransform` or `FindVariableFeatures`
@@ -40,6 +41,8 @@
 #'  analysis. Default is "gemini-1.5-flash-latest".
 #' @param model_O Character string specifying the Ollama model to use for
 #'  analysis. Default is "llama3".
+#' @param model_C Character string specifying the OpenAI model to use for
+#'  analysis. Default is "gpt-4o-mini".
 #' @param model_params A list of parameters to be passed to the `ollama::query` function.
 #'   This allows customization of the Llama model's behavior. Default is `list(seed = 42, temperature = 0, num_gpu = 0)`.
 #' @param api_key_file The path to a text file containing the API key for 
@@ -69,6 +72,9 @@
 #' # Print the analysis results
 #' cat(analysis_results)
 #' }
+#' @import jsonlite
+#' @importFrom httr POST content content_type_json
+#' @export
 
 SCassist_analyze_variable_features <- function(llm_server="google",
                                      seurat_object_name,
@@ -78,6 +84,7 @@ SCassist_analyze_variable_features <- function(llm_server="google",
                                      max_output_tokens = 10048,
                                      model_G = "gemini-1.5-flash-latest",
                                      model_O = "llama3",
+                                     model_C = "gpt-4o-mini",
                                      api_key_file = "api_keys.txt",
                                      model_params = list(seed = 42, temperature = 0, num_gpu = 0)
 ) {
@@ -96,6 +103,13 @@ SCassist_analyze_variable_features <- function(llm_server="google",
                                       experimental_design = experimental_design,
                                       model_params = model_params, 
                                       model = model_O ))
+  } else if (llm_server == "openai") {
+    return(SCassist_analyze_variable_features_C(seurat_object_name, 
+                                      top_n_variable_features = top_n_variable_features, 
+                                      experimental_design = experimental_design,
+                                      model_params = model_params, 
+                                      model = model_C, 
+                                      api_key_file = api_key_file))
   } else {
     stop("Invalid llm_server option. Please specify 'google' or 'ollama'.")
   }
@@ -228,11 +242,102 @@ SCassist_analyze_variable_features_L <- function(seurat_object_name, top_n_varia
   )
   
   # Check if LLM response is valid
-  if (is.null(response_vf$message$content)) {
+  if (is.null(response_vf[[1]]$message$content)) {
     stop("Error: The LLM returned an invalid response. Please check the LLM model and parameters.")
   }
   
   # Print and return the LLM's response
-  cat(response_vf$message$content)
-  return(response_vf$message$content)
+  cat(response_vf[[1]]$message$content) 
+  return(response_vf[[1]]$message$content)
+}
+
+
+SCassist_analyze_variable_features_C <- function(seurat_object_name, 
+                                                 top_n_variable_features = 30, 
+                                                 experimental_design = NULL, 
+                                                 temperature = 0,
+                                                 max_output_tokens = 10048,
+                                                 model = "gpt-4o-mini",
+                                                 model_params = model_params,
+                                                 api_key_file = "api_keys.txt" ) {
+  
+  # 1. Read the API key from the specified file
+  api_key <- readLines(api_key_file, encoding = "UTF-8")
+  
+  # 2. Retrieve the Seurat object
+  seurat_object <- tryCatch(
+    {
+      get(seurat_object_name)
+    },
+    error = function(e) {
+      stop("Error: Seurat object '", seurat_object_name, "' not found in environment.", call. = FALSE)
+    }
+  )
+  
+  # 4. Check if variable features are available
+  if (is.null(VariableFeatures(seurat_object))) {
+    stop("Please run `scTransform` or `FindVariableFeatures` on the Seurat object first.")
+  }
+  
+  # 5. Prepare the Variable Feature Data
+  variable_features <- head(VariableFeatures(object = seurat_object), top_n_variable_features)
+  gene_list <- paste(variable_features, collapse = ", ")
+  
+  # 6. Craft a Prompt for the LLM
+  prompt <- paste0("Analyze the following list of genes: ", gene_list,
+                   "These genes were identified as variable features. Identify the most enriched gene ontologies or pathways among these genes. Dont provide any pvalues or enrichment scores, just summarize based on these genes known functions. Dont provide any Further Analysis suggestions")
+  
+  # 7. Add experimental design if provided
+  if (!is.null(experimental_design)) {
+    prompt <- paste0(prompt, "  Explain the relevance of these categories to the experimental design: ", experimental_design, ".")
+  }
+  
+  # 8. Complete the prompt
+  #prompt <- paste0(prompt, "  Provide your answer as a table with two columns: 'Functional Category' and 'Enrichment Score'.")
+  
+  # Make the POST request to OpenAI
+  response <- httr::POST(
+    url = "https://api.openai.com/v1/chat/completions",
+    add_headers("Authorization" = paste("Bearer", api_key)),
+    content_type_json(), 
+    encode = "json",
+    body = list(
+      model = model, # Specify the model
+      messages = list(      # Messages array as required by Chat Completions API
+        list(
+          role = "user",
+          content = prompt
+        )
+      )
+    )
+  )
+  
+  # 12. Extract the OpenAI model's response
+  # Check for HTTP errors
+  if (http_error(response)) {
+    stop(paste("OpenAI API request failed with status", http_status(response)$message, "\nContent:", content(response, "text")))
+  }
+  
+  # Parse the JSON response
+  if (!requireNamespace("jsonlite", quietly = TRUE)) {
+    stop("Package 'jsonlite' is required but not installed.")
+  }
+  
+  response_content <- content(response, "text")
+  response_json <- jsonlite::fromJSON(response_content, flatten = TRUE)
+  
+  
+  # Extract and print the generated text from the response
+  # For chat completions, the text is in choices[[1]]$message$content
+  if (!is.null(response_json$choices) && length(response_json$choices) > 0 && !is.null(response_json$choices$message.content)) {
+    generated_text <- response_json$choices$message.content
+    cat(generated_text)
+  } else {
+    cat("Error: Could not extract generated text from OpenAI response.\n")
+    print(response_json) # Print the full response for debugging
+  }
+  
+  # 13. Print and return the LLM's response
+  #cat(generated_text)
+  return(generated_text)
 }

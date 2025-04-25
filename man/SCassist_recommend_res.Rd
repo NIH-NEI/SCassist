@@ -10,11 +10,12 @@ SCassist_recommend_res(llm_server="google",
        max_output_tokens = 10048,
        model_G = "gemini-1.5-flash-latest",
        model_O = "llama3",
+       model_C = "gpt-4o-mini",
        api_key_file = "api_keys.txt",
        model_params = list(seed = 42, temperature = 0, num_gpu = 0))
 }
 \arguments{
-\item{llm_server}{The LLM server to use. Options are "google" or "ollama". Default is "google".}
+\item{llm_server}{The LLM server to use. Options are "google" or "ollama" or "openai". Default is "google".}
 
 \item{seurat_object_name}{The name of the Seurat object containing the
 single-cell RNA-seq data. The object should be accessible in the current
@@ -37,6 +38,9 @@ analysis. Default is "gemini-1.5-flash-latest".}
 
 \item{model_O}{Character string specifying the Ollama model to use for
 analysis. Default is "llama3".}
+
+\item{model_C}{Character string specifying the OpenAI model to use for
+analysis. Default is "gpt-4o-mini".}
 
 \item{api_key_file}{Character string specifying the path to a file containing
 the API key for accessing the Gemini model.}

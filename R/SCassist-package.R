@@ -23,7 +23,6 @@
 #'           \code{\link{SCassist_analyze_enrichment}},
 #'           \code{\link{SCassist_analyze_pcs}},
 #'           \code{\link{SCassist_recommend_k}},
-#'           \code{\link{SCassist_recommend_normalization}},
 #'           \code{\link{SCassist_recommend_pcs}},
 #'           \code{\link{SCassist_recommend_res}},
 #'           \code{\link{SCassist_analyze_and_annotate}}

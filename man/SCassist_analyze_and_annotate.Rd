@@ -12,13 +12,14 @@ SCassist_analyze_and_annotate(llm_server="google",
                              max_output_tokens = 10048,
                              model_G = "gemini-1.5-flash-latest",
                              model_O = "llama3",
+                             model_C = "gpt-4o-mini",
                              api_key_file = "api_keys.txt",
-                             model_params = list(seed = 42, 
+                             model_params = list(seed = 42,
                                    temperature = 0, num_gpu = 0)
                              )
 }
 \arguments{
-\item{llm_server}{The LLM server to use. Options are "google" or "ollama". Default is "google".}
+\item{llm_server}{The LLM server to use. Options are "google" or "ollama" or "openai". Default is "google".}
 
 \item{seurat_object_name}{(optional) The name of the Seurat object to annotate.
 If provided, the function will annotate the object with predicted cell types.
@@ -28,12 +29,12 @@ Default is NULL, which skips annotation.}
 by the `FindAllMarkers` function from the Seurat package. This data frame should
 have columns for cluster, gene, avg_logFC, p_val, and pct.1.}
 
-\item{top_genes}{The number of top markers to consider for each cluster. This 
+\item{top_genes}{The number of top markers to consider for each cluster. This
 parameter controls the number of genes used as input for the LLM. A higher
 value will provide more information to the LLM, but may also increase the
 processing time.}
 
-\item{temperature}{A value between 0 and 1 that controls the creativity of the LLM's response. 
+\item{temperature}{A value between 0 and 1 that controls the creativity of the LLM's response.
 Lower values produce more deterministic results, while higher values allow for
 more diverse and potentially unexpected predictions.}
 
@@ -47,6 +48,9 @@ analysis. Default is "gemini-1.5-flash-latest".}
 \item{model_O}{Character string specifying the Ollama model to use for
 analysis. Default is "llama3".}
 
+\item{model_C}{Character string specifying the OpenAI model to use for
+analysis. Default is "gpt-4o-mini".}
+
 \item{api_key_file}{The path to a file containing your Gemini API key. This key
 is required to access the Gemini API. You can obtain a key from Google Cloud
 Platform.}
@@ -55,7 +59,7 @@ Platform.}
 This allows customization of the Llama model's behavior. Default is `list(seed = 42, temperature = 0, num_gpu = 0)`.}
 }
 \value{
-Returns a data frame containing the predicted cell types and reasoning 
+Returns a data frame containing the predicted cell types and reasoning
  for each cluster (`sca_annotation`). The data frame has three columns:
  - `cluster_num`: The cluster number.
  - `cell_type`: The predicted cell type.
