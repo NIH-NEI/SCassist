@@ -1,5 +1,5 @@
 
-<img align="left" src="docs/scassist-logo.png"/>
+<img align="left" src="inst/docs/scassist-logo.png"/>
 &nbsp;
 
 ----
