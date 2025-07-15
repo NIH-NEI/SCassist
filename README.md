@@ -132,3 +132,8 @@ The license for this package can be found in the `LICENSE` file within the packa
   <img width="200" src="https://clustrmaps.com/map_v2.png?d=jphTgCe-j155YI_3KHhgoXKbxfxv9PUprAVDZvkyI5I&cl=ffffff"/>
   </a>
 </p>
+<p align="center">
+  <a href="#">
+     <img src="https://api.visitorbadge.io/api/combined?path=https%3A%2F%2Fgithub.com%2FNIH-NEI%2FSCassist%2F&label=SCassist&countColor=%23f47373" />
+   </a>
+</p>
