@@ -128,7 +128,7 @@ The license for this package can be found in the `LICENSE` file within the packa
 
 
 <p align="center">
-  <a href="https://clustrmaps.com/site/1c74a">  
+  <a href="#">  
   <img width="200" src="https://clustrmaps.com/map_v2.png?d=jphTgCe-j155YI_3KHhgoXKbxfxv9PUprAVDZvkyI5I&cl=ffffff"/>
   </a>
 </p>
