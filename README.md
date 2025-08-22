@@ -123,6 +123,9 @@ Detailed documentation for each function, including parameters, usage, and expec
 - [SCassist Template Prompts](https://nih-nei.github.io/SCassist/SCassist-prompts.md)
 - [SCassist Semantic Similarity Evaluation Script](https://nih-nei.github.io/SCassist/bert-similarity.md)
 
+### **How to Cite?**
+Nagarajan V, Shi G, Arunkumar S, Liu C, Gopalakrishnan J, Nath PR, Jang J, Caspi RR. SCassist: an AI based workflow assistant for single-cell analysis. Bioinformatics. 2025 Aug 2;41(8):btaf402. doi: [10.1093/bioinformatics/btaf402](https://academic.oup.com/bioinformatics/article/41/8/btaf402/8198067). PMID: [40650988](https://pubmed.ncbi.nlm.nih.gov/40650988/); PMCID: PMC12341677.
+
 ### **License:**
 
 The license for this package can be found in the `LICENSE` file within the package directory.
