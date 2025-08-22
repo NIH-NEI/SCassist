@@ -8,8 +8,9 @@
 * Contact: nagarajanv@nih.gov
 ----
 **SCassist** is an R package that utilizes a combination of statistical calculations and LLM-based insights to guide users through the complex process of single-cell RNA-seq data analysis. The package aims to provide recommendations, annotations, and interpretations, leading to efficient and insightful results.
-<br><br>
-Publication: biorxiv preprint here: https://www.biorxiv.org/content/10.1101/2025.04.22.650107v2
+<br>
+[<img align="left" src="inst/docs/pub.png"/>](https://academic.oup.com/bioinformatics/article/41/8/btaf402/8198067)
+&nbsp;
 
 ### **Features:**
 
