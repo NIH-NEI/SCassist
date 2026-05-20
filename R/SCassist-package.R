@@ -14,6 +14,7 @@
 #' Recommending k.param and resolution range. 
 #' Predicting cell types.
 #' Performing, analyzing, integrating and summarizing KEGG and GO enrichment.
+#' Inferring and interpreting cell-cell communication with CellChat.
 #' 
 #' @author Vijay Nagarajan PhD, NEI/NIH
 #' @rdname SCassist
@@ -25,7 +26,8 @@
 #'           \code{\link{SCassist_recommend_k}},
 #'           \code{\link{SCassist_recommend_pcs}},
 #'           \code{\link{SCassist_recommend_res}},
-#'           \code{\link{SCassist_analyze_and_annotate}}
+#'           \code{\link{SCassist_analyze_and_annotate}},
+#'           \code{\link{SCassist_analyze_interactions}}
 #' @import rollama
 #' @importFrom stats sd
 ## usethis namespace: start

@@ -17,6 +17,7 @@ Analyzing PCs to glean insights.
 Recommending k.param and resolution range. 
 Predicting cell types.
 Performing, analyzing, integrating and summarizing KEGG and GO enrichment.
+Inferring and interpreting cell-cell communication with CellChat.
 }
 \seealso{
 \code{\link{SCassist_analyze_quality}}, 
@@ -27,7 +28,8 @@ Performing, analyzing, integrating and summarizing KEGG and GO enrichment.
           \code{\link{SCassist_recommend_k}},
           \code{\link{SCassist_recommend_pcs}},
           \code{\link{SCassist_recommend_res}},
-          \code{\link{SCassist_analyze_and_annotate}}
+          \code{\link{SCassist_analyze_and_annotate}},
+          \code{\link{SCassist_analyze_interactions}}
 }
 \author{
 Vijay Nagarajan PhD, NEI/NIH
