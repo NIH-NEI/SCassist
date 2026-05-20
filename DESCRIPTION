@@ -14,6 +14,7 @@ Description: SCassist is a comprehensive toolkit designed to empower single-cell
         - **Clustering:**  Recommend a suitable range of resolution values for Seurat's `FindClusters` function, facilitating the identification of distinct cell populations.
         - **Marker Gene Analysis and Cell Type Prediction:**  Analyze top marker genes for each cluster using an LLM to predict potential cell types and provide reasoned explanations for the predictions.
         - **KEGG Pathway Enrichment Analysis:**  Analyze KEGG pathway enrichment results using an LLM to provide deeper insights into the enriched pathways, their relationships, and potential key genes or targets.
+        - **Cell-Cell Communication Analysis:**  Run CellChat-based interaction analysis and use LLM-ready summaries to interpret inferred ligand-receptor signaling.
     **SCassist streamlines and accelerates your single-cell analysis workflow by providing:** 
         - **Automated Recommendations:**  Receive tailored recommendations for key parameters and analysis choices based on your specific data characteristics.
         - **LLM-Powered Insights:**  Leverage the power of LLMs to interpret complex data, uncover hidden patterns, and generate insightful summaries and explanations.
@@ -42,5 +43,6 @@ Imports:
     Matrix,
     visNetwork
 Suggests: 
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    CellChat
 RoxygenNote: 7.3.2

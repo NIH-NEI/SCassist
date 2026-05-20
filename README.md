@@ -22,6 +22,7 @@
 * Recommendations for suitable range of resolution values for clustering
 * Marker gene analysis and cell type prediction with detailed reasoning
 * KEGG pathway and GO enrichment analysis and integration, providing deeper insights in to system understanding
+* CellChat-based cell-cell communication analysis and LLM-assisted interaction interpretation
 
 ### **Benefits:**
 
@@ -93,6 +94,32 @@ qc_recommendations <- SCassist_analyze_quality("KO", llm_server="openai", api_ke
 qc_recommendations <- SCassist_analyze_quality("KO", llm_server="ollama")
 
 # ...and many more functions!
+```
+
+### **Cell-Cell Interaction Analysis:**
+
+SCassist can run a single-condition CellChat workflow from a processed, normalized, cell-type-annotated Seurat object and summarize inferred ligand-receptor signaling, pathway activity, sender/receiver roles, autocrine/paracrine signaling, and CellChatDB interaction categories.
+
+This feature requires CellChat v2; install it from `jinworks/CellChat` before running the interaction workflow.
+
+```R
+# Run CellChat and generate an LLM interpretation
+interaction_results <- SCassist_analyze_interactions(
+  seurat_object_name = "seurat_obj",
+  group_by = "celltype",
+  species = "human",
+  experimental_context = "Single-cell RNA-seq of immune cells",
+  api_key_file = "api_keys.txt",
+  llm_server = "google"
+)
+
+# Run CellChat only, without requiring an API key
+interaction_results <- SCassist_analyze_interactions(
+  seurat_object_name = "seurat_obj",
+  group_by = "celltype",
+  species = "human",
+  run_llm = FALSE
+)
 ```
 
 ### **Tutorial Datasets:**

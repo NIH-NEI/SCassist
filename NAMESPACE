@@ -2,6 +2,7 @@
 
 export(SCassist_analyze_and_annotate)
 export(SCassist_analyze_enrichment)
+export(SCassist_analyze_interactions)
 export(SCassist_analyze_pcs)
 export(SCassist_analyze_quality)
 export(SCassist_analyze_variable_features)
