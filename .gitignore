@@ -11,3 +11,4 @@ renv.lock
 SCassist2.Rproj
 
 local_tests/
+scassist_env.yml
