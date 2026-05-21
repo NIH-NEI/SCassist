@@ -20,7 +20,7 @@
 * Recommendations for suitable range of resolution values for clustering
 * Marker gene analysis and cell type prediction with detailed reasoning
 * KEGG pathway and GO enrichment analysis and integration, providing deeper insights in to system understanding
-* CellChat-based cell-cell communication analysis and LLM-assisted interaction interpretation
+* CellChat-based cell-cell communication analysis, pairwise condition comparison, and LLM-assisted interaction interpretation
 
 ### **Benefits:**
 
@@ -54,7 +54,7 @@ pull_model("llama3.1")
 ```
 * SCassist Remote Google Server Setup - obtain api-key following the instructions here:
 https://ai.google.dev/gemini-api/docs/api-key
-* SCassist CellChat-based interaction analysis requires CellChat v2 from `jinworks/CellChat`.
+* SCassist CellChat-based interaction analysis and pairwise comparison require CellChat v2 from `jinworks/CellChat`.
 
 ### **Example Usage:**
 

@@ -22,7 +22,7 @@
 * Recommendations for suitable range of resolution values for clustering
 * Marker gene analysis and cell type prediction with detailed reasoning
 * KEGG pathway and GO enrichment analysis and integration, providing deeper insights in to system understanding
-* CellChat-based cell-cell communication analysis and LLM-assisted interaction interpretation
+* CellChat-based cell-cell communication analysis, pairwise condition comparison, and LLM-assisted interaction interpretation
 
 ### **Benefits:**
 
@@ -100,7 +100,9 @@ qc_recommendations <- SCassist_analyze_quality("KO", llm_server="ollama")
 
 SCassist can run a single-condition CellChat workflow from a processed, normalized, cell-type-annotated Seurat object and summarize inferred ligand-receptor signaling, pathway activity, sender/receiver roles, autocrine/paracrine signaling, and CellChatDB interaction categories.
 
-This feature requires CellChat v2; install it from `jinworks/CellChat` before running the interaction workflow.
+SCassist can also compare inferred CellChat communication between two biological conditions from one annotated Seurat object. Phase 2A compares shared cell groups only and reports condition-specific groups separately.
+
+These features require CellChat v2; install it from `jinworks/CellChat` before running the interaction workflows.
 
 ```R
 # Run CellChat and generate an LLM interpretation
@@ -117,6 +119,17 @@ interaction_results <- SCassist_analyze_interactions(
 interaction_results <- SCassist_analyze_interactions(
   seurat_object_name = "seurat_obj",
   group_by = "celltype",
+  species = "human",
+  run_llm = FALSE
+)
+
+# Compare two conditions without requiring an API key
+comparison_results <- SCassist_compare_interactions(
+  seurat_object_name = "seurat_obj",
+  group_by = "celltype",
+  condition_by = "condition",
+  condition_a = "control",
+  condition_b = "treated",
   species = "human",
   run_llm = FALSE
 )
