@@ -100,7 +100,9 @@ qc_recommendations <- SCassist_analyze_quality("KO", llm_server="ollama")
 
 SCassist can run a single-condition CellChat workflow from a processed, normalized, cell-type-annotated Seurat object and summarize inferred ligand-receptor signaling, pathway activity, sender/receiver roles, autocrine/paracrine signaling, and CellChatDB interaction categories.
 
-SCassist can also compare inferred CellChat communication between two biological conditions from one annotated Seurat object. Phase 2A compares shared cell groups only and reports condition-specific groups separately.
+SCassist can also compare inferred CellChat communication between two biological conditions from one annotated Seurat object. The comparison workflow compares shared cell groups only, reports condition-specific groups separately, and can add transcript-level ligand/receptor expression support for differential interactions.
+
+Expression support uses average expression and percent-expressing summaries from the Seurat object. It is not formal differential expression testing and does not prove protein-level signaling, receptor activation, physical interaction, or functional communication.
 
 These features require CellChat v2; install it from `jinworks/CellChat` before running the interaction workflows.
 
@@ -131,9 +133,31 @@ comparison_results <- SCassist_compare_interactions(
   condition_a = "control",
   condition_b = "treated",
   species = "human",
+  add_expression_support = TRUE,
+  expression_support_logfc_threshold = 0.25,
+  expression_support_min_pct = 0.1,
   run_llm = FALSE
 )
 ```
+
+### **TrajectoryAgent:**
+
+SCassist includes a native R TrajectoryAgent for Monocle3-based developmental trajectory analysis. The agent runs Monocle3 directly in R, uses UMAP principal graphs, selects roots programmatically when defensible root evidence is supplied, reports partitions and infinite pseudotime, and writes structured evidence summaries for LLM interpretation instead of sending raw Monocle3 tables or expression matrices.
+
+```R
+trajectory_results <- run_trajectory_agent(
+  cds = input_cds,
+  output_dir = "results/trajectory_agent",
+  cell_type_col = "cell_type",
+  condition_col = "condition",
+  batch_col = "batch",
+  time_col = "timepoint",
+  earliest_time_value = "day0",
+  cores = 4
+)
+```
+
+The command-line wrapper also accepts explicit roots with `--root_pr_nodes` or `--root_cells`. `--root_cells` may be a comma-separated list or a text/TSV file containing one cell ID per line or a `cell_id` column.
 
 ### **Tutorial Datasets:**
 * [PBMCs from Birdshot Uveitis Patient](https://github.com/PulakNath/bcr-uveitis/raw/refs/heads/main/Results/cellranger/NS7R65BBTS/cellranger_output/filtered_feature_bc_matrix.h5)

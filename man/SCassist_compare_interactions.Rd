@@ -19,6 +19,12 @@ SCassist_compare_interactions(seurat_object_name,
                               pval_threshold = 0.05,
                               top_n_interactions = 50,
                               top_n_pathways = 20,
+                              add_expression_support = TRUE,
+                              expression_support_assay = assay,
+                              expression_support_slot = "data",
+                              expression_support_logfc_threshold = 0.25,
+                              expression_support_min_pct = 0.1,
+                              expression_support_pseudocount = 1e-6,
                               run_llm = TRUE,
                               output_dir = NULL,
                               experimental_context = NULL,
@@ -77,6 +83,26 @@ in the LLM context. Default is 50.}
 \item{top_n_pathways}{Number of top differential pathways to include in the
 LLM context. Default is 20.}
 
+\item{add_expression_support}{Logical value indicating whether to add
+transcript-level ligand/receptor expression support summaries for
+differential interactions. This is expression support, not formal
+differential expression testing. Default is TRUE.}
+
+\item{expression_support_assay}{Seurat assay used for expression support.
+Default is the same value as `assay`.}
+
+\item{expression_support_slot}{Assay slot or layer used for expression
+support. Default is "data".}
+
+\item{expression_support_logfc_threshold}{Absolute log2 fold-change
+threshold used to label expression support. Default is 0.25.}
+
+\item{expression_support_min_pct}{Minimum fraction of cells expressing a
+ligand or receptor gene in the expected condition. Default is 0.1.}
+
+\item{expression_support_pseudocount}{Pseudocount used for expression
+log2 fold-change calculations. Default is 1e-6.}
+
 \item{run_llm}{Logical value indicating whether to query an LLM. If FALSE,
 no API key is required and `llm_response` is NULL. Default is TRUE.}
 
@@ -114,7 +140,9 @@ Ollama models. Default is `list(seed = 42, temperature = 0, num_gpu = 0)`.}
 \value{
 A structured list containing `condition_a`, `condition_b`,
   `cellchat_condition_a`, `cellchat_condition_b`, `merged_cellchat`,
-  `metadata`, per-condition summaries, differential tables, `llm_context`,
+  `metadata`, per-condition summaries, differential tables,
+  `expression_support`, `expression_support_subunits`,
+  `differential_interactions_with_expression_support`, `llm_context`,
   `llm_prompt`, and `llm_response`.
 }
 \description{
@@ -122,8 +150,11 @@ This function runs pairwise differential CellChat analysis between
 two biological conditions from one processed, normalized, cell-type-annotated
 Seurat object. It runs CellChat independently for each condition on shared
 cell groups, compares inferred communication counts, strengths, pathways,
-ligand-receptor axes, and sender/receiver roles, then builds a compact
-LLM-ready differential interpretation context.
+ligand-receptor axes, and sender/receiver roles, then optionally adds
+transcript-level ligand/receptor expression support summaries. Expression
+support is not formal differential expression testing and does not prove
+protein-level signaling. The function then builds a compact LLM-ready
+differential interpretation context.
 }
 \examples{
 \dontrun{

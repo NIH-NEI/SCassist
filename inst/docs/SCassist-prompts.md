@@ -187,6 +187,7 @@ Your response should include:
 3. Key ligand-receptor axes
    - Identify the strongest differential ligand-receptor pairs and the sender-receiver cell groups they connect.
    - Separate gained/lost interactions from increased/decreased shared interactions.
+   - When expression-support metrics are available, distinguish CellChat communication-score changes supported by ligand/receptor expression changes from partially supported changes, weakly supported changes, and directionally inconsistent changes.
 
 4. Sender and receiver shifts
    - Describe which cell groups show increased or decreased outgoing signaling.
@@ -202,7 +203,8 @@ Your response should include:
    - Differences between conditions do not prove causality, protein-level activity, or spatial proximity.
    - Gained or lost interactions reflect differences in CellChat-detected/significant communication under the chosen thresholds, not absolute biological presence or absence.
    - Phase 2A compares shared cell groups only; condition-specific cell groups are reported but excluded from the main pairwise comparison.
-   - Differential interpretation is based on CellChat communication scores and pathway information flow, not DEG-supported ligand/receptor logFC analysis.
+   - Differential interpretation is based on CellChat communication scores and pathway information flow, not formal DEG-supported ligand/receptor logFC analysis.
+   - Expression support is based on transcript-level average expression and percent-expressing summaries. It does not prove protein abundance, receptor activation, physical interaction, or functional signaling.
 
 7. Suggested follow-up
    - Recommend practical validation or follow-up analyses, such as checking ligand/receptor expression, validating key pathways experimentally, comparing additional conditions, or running DEG-supported ligand-receptor analysis.

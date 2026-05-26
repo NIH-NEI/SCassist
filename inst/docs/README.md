@@ -55,6 +55,7 @@ pull_model("llama3.1")
 * SCassist Remote Google Server Setup - obtain api-key following the instructions here:
 https://ai.google.dev/gemini-api/docs/api-key
 * SCassist CellChat-based interaction analysis and pairwise comparison require CellChat v2 from `jinworks/CellChat`.
+* Pairwise interaction comparison can add transcript-level ligand/receptor expression support using average expression and percent-expressing summaries. This is not formal differential expression testing and does not prove protein-level signaling.
 
 ### **Example Usage:**
 

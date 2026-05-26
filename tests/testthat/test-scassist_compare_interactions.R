@@ -180,6 +180,213 @@ test_that("run_llm FALSE does not require an API key and preserves llm_response"
   expect_null(result$llm_response)
 })
 
+test_that("add_expression_support FALSE preserves expression support names with NULL values", {
+  interactions <- data.frame(
+    source = "Sender",
+    target = "Receiver",
+    interaction_name = "L1_R1",
+    stringsAsFactors = FALSE
+  )
+
+  result <- SCassist:::SCassist_compare_interactions_expression_support_disabled(interactions)
+
+  expect_true("expression_support" %in% names(result))
+  expect_true("expression_support_subunits" %in% names(result))
+  expect_true("differential_interactions_with_expression_support" %in% names(result))
+  expect_null(result$expression_support)
+  expect_null(result$expression_support_subunits)
+})
+
+test_that("expression-support helper works on a small synthetic expression matrix", {
+  expression_data <- matrix(
+    c(
+      1, 1, 4, 4,
+      2, 2, 2, 2
+    ),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(c("L1", "R1"), paste0("cell", 1:4))
+  )
+  meta <- data.frame(
+    celltype = rep("Sender", 4),
+    condition = c("control", "control", "treated", "treated"),
+    row.names = paste0("cell", 1:4),
+    stringsAsFactors = FALSE
+  )
+
+  metrics <- SCassist:::SCassist_compare_interactions_single_gene_metrics(
+    gene = "L1",
+    expression_data = expression_data,
+    meta = meta,
+    group_by = "celltype",
+    condition_by = "condition",
+    cell_group = "Sender",
+    condition_a = "control",
+    condition_b = "treated",
+    pseudocount = 1e-6
+  )
+
+  expect_gt(metrics$avg_expr_condition_b, metrics$avg_expr_condition_a)
+  expect_gt(metrics$logfc_condition_b_vs_a, 0.25)
+  expect_equal(metrics$pct_expr_condition_a, 1)
+  expect_equal(metrics$pct_expr_condition_b, 1)
+})
+
+test_that("expression support labels strong supported interactions", {
+  skip_if_not_installed("Seurat")
+
+  counts <- matrix(
+    c(
+      1, 1, 0, 0, 8, 8, 0, 0,
+      0, 0, 1, 1, 0, 0, 8, 8,
+      1, 1, 1, 1, 1, 1, 1, 1
+    ),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(c("L1", "R1", "House"), paste0("cell", 1:8))
+  )
+  obj <- suppressWarnings(Seurat::CreateSeuratObject(counts = counts))
+  obj$celltype <- rep(c("Sender", "Receiver", "Sender", "Receiver"), each = 2)
+  obj$condition <- rep(c("control", "control", "treated", "treated"), each = 2)
+  obj <- Seurat::NormalizeData(obj, verbose = FALSE)
+
+  interactions <- data.frame(
+    source = "Sender",
+    target = "Receiver",
+    ligand = "L1",
+    receptor = "R1",
+    interaction_name = "L1_R1",
+    pathway_name = "TEST",
+    score_condition_a = 0.2,
+    score_condition_b = 1.2,
+    delta_score = 1,
+    pval_condition_a = 0.01,
+    pval_condition_b = 0.01,
+    status = "increased_in_condition_b",
+    annotation = "Secreted Signaling",
+    autocrine = FALSE,
+    stringsAsFactors = FALSE
+  )
+
+  result <- SCassist:::SCassist_compare_interactions_compute_expression_support(
+    seurat_object = obj,
+    differential_interactions = interactions,
+    group_by = "celltype",
+    condition_by = "condition",
+    condition_a = "control",
+    condition_b = "treated",
+    shared_cell_groups = c("Sender", "Receiver"),
+    expression_support_assay = "RNA",
+    expression_support_slot = "counts",
+    expression_support_logfc_threshold = 0.25,
+    expression_support_min_pct = 0.1,
+    expression_support_pseudocount = 1e-6
+  )
+
+  expect_equal(result$expression_support$expression_support_label, "strong_expression_support")
+  expect_true("expression_support_label" %in% names(result$differential_interactions_with_expression_support))
+})
+
+test_that("missing expression genes produce insufficient support without error", {
+  skip_if_not_installed("Seurat")
+
+  obj <- scassist_compare_test_object()
+  interactions <- data.frame(
+    source = "Sender",
+    target = "Receiver",
+    ligand = "MissingLigand",
+    receptor = "MissingReceptor",
+    interaction_name = "MissingLigand_MissingReceptor",
+    pathway_name = "TEST",
+    score_condition_a = 0,
+    score_condition_b = 1,
+    delta_score = 1,
+    pval_condition_a = NA_real_,
+    pval_condition_b = 0.01,
+    status = "gained_in_condition_b",
+    annotation = "Secreted Signaling",
+    autocrine = FALSE,
+    stringsAsFactors = FALSE
+  )
+
+  result <- SCassist:::SCassist_compare_interactions_compute_expression_support(
+    seurat_object = obj,
+    differential_interactions = interactions,
+    group_by = "celltype",
+    condition_by = "condition",
+    condition_a = "control",
+    condition_b = "treated",
+    shared_cell_groups = c("Sender", "Receiver"),
+    expression_support_assay = "RNA",
+    expression_support_slot = "counts",
+    expression_support_logfc_threshold = 0.25,
+    expression_support_min_pct = 0.1,
+    expression_support_pseudocount = 1e-6
+  )
+
+  expect_equal(result$expression_support$expression_support_label, "insufficient_expression_data")
+  expect_match(result$expression_support$expression_support_note, "Missing ligand genes")
+})
+
+test_that("multi-subunit receptor with missing subunit is not strong support", {
+  skip_if_not_installed("Seurat")
+
+  counts <- matrix(
+    c(
+      1, 1, 0, 0, 8, 8, 0, 0,
+      0, 0, 1, 1, 0, 0, 8, 8,
+      1, 1, 1, 1, 1, 1, 1, 1
+    ),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(c("L1", "R1", "House"), paste0("cell", 1:8))
+  )
+  obj <- suppressWarnings(Seurat::CreateSeuratObject(counts = counts))
+  obj$celltype <- rep(c("Sender", "Receiver", "Sender", "Receiver"), each = 2)
+  obj$condition <- rep(c("control", "control", "treated", "treated"), each = 2)
+  obj <- Seurat::NormalizeData(obj, verbose = FALSE)
+
+  interactions <- data.frame(
+    source = "Sender",
+    target = "Receiver",
+    ligand = "L1",
+    receptor = "R1_R2",
+    interaction_name = "L1_R1_R2",
+    pathway_name = "TEST",
+    score_condition_a = 0,
+    score_condition_b = 1,
+    delta_score = 1,
+    pval_condition_a = NA_real_,
+    pval_condition_b = 0.01,
+    status = "gained_in_condition_b",
+    annotation = "Secreted Signaling",
+    autocrine = FALSE,
+    stringsAsFactors = FALSE
+  )
+
+  result <- SCassist:::SCassist_compare_interactions_compute_expression_support(
+    seurat_object = obj,
+    differential_interactions = interactions,
+    group_by = "celltype",
+    condition_by = "condition",
+    condition_a = "control",
+    condition_b = "treated",
+    shared_cell_groups = c("Sender", "Receiver"),
+    expression_support_assay = "RNA",
+    expression_support_slot = "counts",
+    expression_support_logfc_threshold = 0.25,
+    expression_support_min_pct = 0.1,
+    expression_support_pseudocount = 1e-6
+  )
+
+  expect_false(result$expression_support$expression_support_label == "strong_expression_support")
+  expect_true("R2" %in% result$expression_support_subunits$gene)
+  expect_equal(
+    result$expression_support_subunits$support_label[result$expression_support_subunits$gene == "R2"],
+    "missing_gene"
+  )
+})
+
 test_that("differential pathway summaries work on small synthetic tables", {
   pathways_a <- data.frame(
     pathway_name = c("CXCL", "MIF", "TGFb"),
@@ -260,6 +467,40 @@ test_that("differential LLM context and prompt contain comparison caveats", {
   differential_interactions <- SCassist:::SCassist_compare_interactions_empty_lr_comparison()
   differential_cell_roles <- SCassist:::SCassist_compare_interactions_empty_role_comparison()
   gained_lost_summary <- SCassist:::SCassist_compare_interactions_empty_gained_lost_summary()
+  expression_support <- data.frame(
+    source = "Sender",
+    target = "Receiver",
+    interaction_name = "L1_R1",
+    pathway_name = "TEST",
+    status = "increased_in_condition_b",
+    score_condition_a = 0.2,
+    score_condition_b = 1.2,
+    delta_score = 1,
+    ligand = "L1",
+    receptor = "R1",
+    ligand_genes = "L1",
+    receptor_genes = "R1",
+    missing_ligand_genes = NA_character_,
+    missing_receptor_genes = NA_character_,
+    ligand_avg_expr_condition_a = 1,
+    ligand_avg_expr_condition_b = 4,
+    ligand_logfc_condition_b_vs_a = 2,
+    ligand_pct_expr_condition_a = 1,
+    ligand_pct_expr_condition_b = 1,
+    ligand_delta_pct_expr = 0,
+    receptor_avg_expr_condition_a = 1,
+    receptor_avg_expr_condition_b = 4,
+    receptor_logfc_condition_b_vs_a = 2,
+    receptor_pct_expr_condition_a = 1,
+    receptor_pct_expr_condition_b = 1,
+    receptor_delta_pct_expr = 0,
+    expected_direction = "increase_in_condition_b",
+    ligand_expression_support = "supports_expected_direction",
+    receptor_expression_support = "supports_expected_direction",
+    expression_support_label = "strong_expression_support",
+    expression_support_note = "synthetic strong support",
+    stringsAsFactors = FALSE
+  )
 
   llm_context <- SCassist:::SCassist_compare_interactions_build_llm_context(
     metadata = metadata,
@@ -268,6 +509,8 @@ test_that("differential LLM context and prompt contain comparison caveats", {
     differential_interactions = differential_interactions,
     differential_cell_roles = differential_cell_roles,
     gained_lost_summary = gained_lost_summary,
+    expression_support = expression_support,
+    expression_support_subunits = SCassist:::SCassist_compare_interactions_empty_expression_support_subunits(),
     top_n_interactions = 10,
     top_n_pathways = 10,
     experimental_context = "synthetic test"
@@ -275,9 +518,11 @@ test_that("differential LLM context and prompt contain comparison caveats", {
   llm_prompt <- SCassist:::SCassist_compare_interactions_build_llm_prompt(llm_context)
 
   expect_true("interpretation_caveats" %in% names(llm_context))
+  expect_true("expression_support_summary" %in% names(llm_context))
   expect_match(llm_prompt, "pairwise differential")
   expect_match(llm_prompt, "shared cell groups only")
-  expect_match(llm_prompt, "not DEG-supported")
+  expect_match(llm_prompt, "not formal DEG-supported")
+  expect_match(llm_prompt, "Expression support is based on transcript-level")
 })
 
 test_that("CellChat-dependent comparison setup smoke test skips cleanly", {

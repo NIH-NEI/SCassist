@@ -4,8 +4,11 @@
 #' two biological conditions from one processed, normalized, cell-type-annotated
 #' Seurat object. It runs CellChat independently for each condition on shared
 #' cell groups, compares inferred communication counts, strengths, pathways,
-#' ligand-receptor axes, and sender/receiver roles, then builds a compact
-#' LLM-ready differential interpretation context.
+#' ligand-receptor axes, and sender/receiver roles, then optionally adds
+#' transcript-level ligand/receptor expression support summaries. Expression
+#' support is not formal differential expression testing and does not prove
+#' protein-level signaling. The function then builds a compact LLM-ready
+#' differential interpretation context.
 #'
 #' @author Vijay Nagarajan, PhD, NEI/NIH
 #'
@@ -38,6 +41,20 @@
 #'   in the LLM context. Default is 50.
 #' @param top_n_pathways Number of top differential pathways to include in the
 #'   LLM context. Default is 20.
+#' @param add_expression_support Logical value indicating whether to add
+#'   transcript-level ligand/receptor expression support summaries for
+#'   differential interactions. This is expression support, not formal
+#'   differential expression testing. Default is TRUE.
+#' @param expression_support_assay Seurat assay used for expression support.
+#'   Default is the same value as `assay`.
+#' @param expression_support_slot Assay slot or layer used for expression
+#'   support. Default is "data".
+#' @param expression_support_logfc_threshold Absolute log2 fold-change
+#'   threshold used to label expression support. Default is 0.25.
+#' @param expression_support_min_pct Minimum fraction of cells expressing a
+#'   ligand or receptor gene in the expected condition. Default is 0.1.
+#' @param expression_support_pseudocount Pseudocount used for expression
+#'   log2 fold-change calculations. Default is 1e-6.
 #' @param run_llm Logical value indicating whether to query an LLM. If FALSE,
 #'   no API key is required and `llm_response` is NULL. Default is TRUE.
 #' @param output_dir Optional directory for CellChat and summary output files.
@@ -64,7 +81,9 @@
 #'
 #' @return A structured list containing `condition_a`, `condition_b`,
 #'   `cellchat_condition_a`, `cellchat_condition_b`, `merged_cellchat`,
-#'   `metadata`, per-condition summaries, differential tables, `llm_context`,
+#'   `metadata`, per-condition summaries, differential tables,
+#'   `expression_support`, `expression_support_subunits`,
+#'   `differential_interactions_with_expression_support`, `llm_context`,
 #'   `llm_prompt`, and `llm_response`.
 #'
 #' @usage
@@ -83,6 +102,12 @@
 #'                               pval_threshold = 0.05,
 #'                               top_n_interactions = 50,
 #'                               top_n_pathways = 20,
+#'                               add_expression_support = TRUE,
+#'                               expression_support_assay = assay,
+#'                               expression_support_slot = "data",
+#'                               expression_support_logfc_threshold = 0.25,
+#'                               expression_support_min_pct = 0.1,
+#'                               expression_support_pseudocount = 1e-6,
 #'                               run_llm = TRUE,
 #'                               output_dir = NULL,
 #'                               experimental_context = NULL,
@@ -126,6 +151,12 @@ SCassist_compare_interactions <- function(seurat_object_name,
                                           pval_threshold = 0.05,
                                           top_n_interactions = 50,
                                           top_n_pathways = 20,
+                                          add_expression_support = TRUE,
+                                          expression_support_assay = assay,
+                                          expression_support_slot = "data",
+                                          expression_support_logfc_threshold = 0.25,
+                                          expression_support_min_pct = 0.1,
+                                          expression_support_pseudocount = 1e-6,
                                           run_llm = TRUE,
                                           output_dir = NULL,
                                           experimental_context = NULL,
@@ -152,6 +183,15 @@ SCassist_compare_interactions <- function(seurat_object_name,
     top_n_pathways = top_n_pathways,
     run_llm = run_llm,
     llm_server = llm_server
+  )
+
+  SCassist_compare_interactions_validate_expression_support_inputs(
+    add_expression_support = add_expression_support,
+    expression_support_assay = expression_support_assay,
+    expression_support_slot = expression_support_slot,
+    expression_support_logfc_threshold = expression_support_logfc_threshold,
+    expression_support_min_pct = expression_support_min_pct,
+    expression_support_pseudocount = expression_support_pseudocount
   )
 
   if (missing(condition_a)) {
@@ -318,6 +358,34 @@ SCassist_compare_interactions <- function(seurat_object_name,
     interactions_condition_b = condition_b_results$interactions
   )
 
+  expression_support_results <- SCassist_compare_interactions_expression_support_disabled(
+    differential_interactions
+  )
+  expression_support <- expression_support_results$expression_support
+  expression_support_subunits <- expression_support_results$expression_support_subunits
+  differential_interactions_with_expression_support <- expression_support_results$differential_interactions_with_expression_support
+
+  if (add_expression_support) {
+    expression_support_results <- SCassist_compare_interactions_compute_expression_support(
+      seurat_object = seurat_object,
+      differential_interactions = differential_interactions,
+      group_by = group_by,
+      condition_by = condition_by,
+      condition_a = condition_a,
+      condition_b = condition_b,
+      shared_cell_groups = condition_info$shared_cell_groups,
+      expression_support_assay = expression_support_assay,
+      expression_support_slot = expression_support_slot,
+      expression_support_logfc_threshold = expression_support_logfc_threshold,
+      expression_support_min_pct = expression_support_min_pct,
+      expression_support_pseudocount = expression_support_pseudocount
+    )
+    expression_support <- expression_support_results$expression_support
+    expression_support_subunits <- expression_support_results$expression_support_subunits
+    differential_interactions_with_expression_support <- expression_support_results$differential_interactions_with_expression_support
+    differential_interactions <- differential_interactions_with_expression_support
+  }
+
   differential_cell_roles <- SCassist_compare_interactions_compare_cell_roles(
     cell_roles_condition_a = condition_a_results$cell_role_summary,
     cell_roles_condition_b = condition_b_results$cell_role_summary
@@ -338,6 +406,8 @@ SCassist_compare_interactions <- function(seurat_object_name,
     differential_interactions = differential_interactions,
     differential_cell_roles = differential_cell_roles,
     gained_lost_summary = gained_lost_summary,
+    expression_support = expression_support,
+    expression_support_subunits = expression_support_subunits,
     top_n_interactions = top_n_interactions,
     top_n_pathways = top_n_pathways,
     experimental_context = experimental_context
@@ -360,6 +430,9 @@ SCassist_compare_interactions <- function(seurat_object_name,
     differential_interactions = differential_interactions,
     differential_cell_roles = differential_cell_roles,
     gained_lost_summary = gained_lost_summary,
+    expression_support = expression_support,
+    expression_support_subunits = expression_support_subunits,
+    differential_interactions_with_expression_support = differential_interactions_with_expression_support,
     llm_context = llm_context,
     llm_prompt = llm_prompt,
     llm_response = NULL
@@ -413,6 +486,51 @@ SCassist_compare_interactions_validate_condition_args <- function(condition_a,
   }
 
   list(condition_a = condition_a, condition_b = condition_b)
+}
+
+
+SCassist_compare_interactions_validate_expression_support_inputs <- function(add_expression_support,
+                                                                             expression_support_assay,
+                                                                             expression_support_slot,
+                                                                             expression_support_logfc_threshold,
+                                                                             expression_support_min_pct,
+                                                                             expression_support_pseudocount) {
+  if (!is.logical(add_expression_support) || length(add_expression_support) != 1 ||
+      is.na(add_expression_support)) {
+    stop("Error: add_expression_support must be TRUE or FALSE.", call. = FALSE)
+  }
+
+  if (!is.character(expression_support_assay) || length(expression_support_assay) != 1 ||
+      is.na(expression_support_assay) || expression_support_assay == "") {
+    stop("Error: expression_support_assay must be a single assay name.", call. = FALSE)
+  }
+
+  if (!is.character(expression_support_slot) || length(expression_support_slot) != 1 ||
+      is.na(expression_support_slot) || expression_support_slot == "") {
+    stop("Error: expression_support_slot must be a single slot or layer name.", call. = FALSE)
+  }
+
+  if (!is.numeric(expression_support_logfc_threshold) ||
+      length(expression_support_logfc_threshold) != 1 ||
+      is.na(expression_support_logfc_threshold) ||
+      expression_support_logfc_threshold < 0) {
+    stop("Error: expression_support_logfc_threshold must be a non-negative numeric value.", call. = FALSE)
+  }
+
+  if (!is.numeric(expression_support_min_pct) ||
+      length(expression_support_min_pct) != 1 ||
+      is.na(expression_support_min_pct) ||
+      expression_support_min_pct < 0 ||
+      expression_support_min_pct > 1) {
+    stop("Error: expression_support_min_pct must be a numeric value between 0 and 1.", call. = FALSE)
+  }
+
+  if (!is.numeric(expression_support_pseudocount) ||
+      length(expression_support_pseudocount) != 1 ||
+      is.na(expression_support_pseudocount) ||
+      expression_support_pseudocount <= 0) {
+    stop("Error: expression_support_pseudocount must be a positive numeric value.", call. = FALSE)
+  }
 }
 
 
@@ -1247,16 +1365,827 @@ SCassist_compare_interactions_empty_gained_lost_summary <- function() {
 }
 
 
+SCassist_compare_interactions_compute_expression_support <- function(seurat_object,
+                                                                     differential_interactions,
+                                                                     group_by,
+                                                                     condition_by,
+                                                                     condition_a,
+                                                                     condition_b,
+                                                                     shared_cell_groups,
+                                                                     expression_support_assay,
+                                                                     expression_support_slot,
+                                                                     expression_support_logfc_threshold,
+                                                                     expression_support_min_pct,
+                                                                     expression_support_pseudocount) {
+  expression_data <- SCassist_compare_interactions_get_expression_data(
+    seurat_object = seurat_object,
+    assay = expression_support_assay,
+    slot = expression_support_slot
+  )
+
+  if (is.null(expression_data)) {
+    warning(
+      "Expression support was skipped because expression data could not be accessed from assay '",
+      expression_support_assay,
+      "' slot/layer '",
+      expression_support_slot,
+      "'. Phase 2A comparison outputs were still returned.",
+      call. = FALSE
+    )
+    return(SCassist_compare_interactions_expression_support_skipped(differential_interactions))
+  }
+
+  if (nrow(differential_interactions) == 0) {
+    empty_support <- SCassist_compare_interactions_empty_expression_support()
+    return(list(
+      expression_support = empty_support,
+      expression_support_subunits = SCassist_compare_interactions_empty_expression_support_subunits(),
+      differential_interactions_with_expression_support = differential_interactions
+    ))
+  }
+
+  meta <- seurat_object@meta.data
+  meta$SCassist_compare_cell <- rownames(meta)
+  meta <- meta[
+    as.character(meta[[group_by]]) %in% shared_cell_groups &
+      as.character(meta[[condition_by]]) %in% c(condition_a, condition_b),
+    ,
+    drop = FALSE
+  ]
+
+  support_rows <- vector("list", nrow(differential_interactions))
+  subunit_rows <- list()
+
+  for (i in seq_len(nrow(differential_interactions))) {
+    row <- differential_interactions[i, , drop = FALSE]
+    expected_direction <- SCassist_compare_interactions_expected_expression_direction(row$status)
+    parsed_genes <- SCassist_compare_interactions_parse_interaction_genes(
+      interaction_row = row,
+      expression_genes = rownames(expression_data)
+    )
+
+    ligand_metrics <- SCassist_compare_interactions_gene_metrics(
+      genes = parsed_genes$ligand_genes,
+      missing_genes = parsed_genes$missing_ligand_genes,
+      expression_data = expression_data,
+      meta = meta,
+      group_by = group_by,
+      condition_by = condition_by,
+      cell_group = as.character(row$source),
+      condition_a = condition_a,
+      condition_b = condition_b,
+      molecule_role = "ligand",
+      interaction_row = row,
+      expected_direction = expected_direction,
+      expression_support_logfc_threshold = expression_support_logfc_threshold,
+      expression_support_min_pct = expression_support_min_pct,
+      expression_support_pseudocount = expression_support_pseudocount
+    )
+
+    receptor_metrics <- SCassist_compare_interactions_gene_metrics(
+      genes = parsed_genes$receptor_genes,
+      missing_genes = parsed_genes$missing_receptor_genes,
+      expression_data = expression_data,
+      meta = meta,
+      group_by = group_by,
+      condition_by = condition_by,
+      cell_group = as.character(row$target),
+      condition_a = condition_a,
+      condition_b = condition_b,
+      molecule_role = "receptor",
+      interaction_row = row,
+      expected_direction = expected_direction,
+      expression_support_logfc_threshold = expression_support_logfc_threshold,
+      expression_support_min_pct = expression_support_min_pct,
+      expression_support_pseudocount = expression_support_pseudocount
+    )
+
+    ligand_summary <- SCassist_compare_interactions_role_expression_summary(
+      metrics = ligand_metrics,
+      expected_direction = expected_direction
+    )
+    receptor_summary <- SCassist_compare_interactions_role_expression_summary(
+      metrics = receptor_metrics,
+      expected_direction = expected_direction
+    )
+    interaction_label <- SCassist_compare_interactions_expression_support_label(
+      ligand_support = ligand_summary$support_label,
+      receptor_support = receptor_summary$support_label
+    )
+
+    note <- SCassist_compare_interactions_expression_support_note(
+      parsed_genes = parsed_genes,
+      ligand_support = ligand_summary$support_label,
+      receptor_support = receptor_summary$support_label,
+      interaction_label = interaction_label
+    )
+
+    support_rows[[i]] <- data.frame(
+      source = as.character(row$source),
+      target = as.character(row$target),
+      interaction_name = as.character(row$interaction_name),
+      pathway_name = as.character(row$pathway_name),
+      status = as.character(row$status),
+      score_condition_a = suppressWarnings(as.numeric(row$score_condition_a)),
+      score_condition_b = suppressWarnings(as.numeric(row$score_condition_b)),
+      delta_score = suppressWarnings(as.numeric(row$delta_score)),
+      ligand = as.character(row$ligand),
+      receptor = as.character(row$receptor),
+      ligand_genes = SCassist_compare_interactions_collapse_genes(parsed_genes$ligand_genes),
+      receptor_genes = SCassist_compare_interactions_collapse_genes(parsed_genes$receptor_genes),
+      missing_ligand_genes = SCassist_compare_interactions_collapse_genes(parsed_genes$missing_ligand_genes),
+      missing_receptor_genes = SCassist_compare_interactions_collapse_genes(parsed_genes$missing_receptor_genes),
+      ligand_avg_expr_condition_a = ligand_summary$avg_expr_condition_a,
+      ligand_avg_expr_condition_b = ligand_summary$avg_expr_condition_b,
+      ligand_logfc_condition_b_vs_a = ligand_summary$logfc_condition_b_vs_a,
+      ligand_pct_expr_condition_a = ligand_summary$pct_expr_condition_a,
+      ligand_pct_expr_condition_b = ligand_summary$pct_expr_condition_b,
+      ligand_delta_pct_expr = ligand_summary$delta_pct_expr,
+      receptor_avg_expr_condition_a = receptor_summary$avg_expr_condition_a,
+      receptor_avg_expr_condition_b = receptor_summary$avg_expr_condition_b,
+      receptor_logfc_condition_b_vs_a = receptor_summary$logfc_condition_b_vs_a,
+      receptor_pct_expr_condition_a = receptor_summary$pct_expr_condition_a,
+      receptor_pct_expr_condition_b = receptor_summary$pct_expr_condition_b,
+      receptor_delta_pct_expr = receptor_summary$delta_pct_expr,
+      expected_direction = expected_direction,
+      ligand_expression_support = ligand_summary$support_label,
+      receptor_expression_support = receptor_summary$support_label,
+      expression_support_label = interaction_label,
+      expression_support_note = note,
+      stringsAsFactors = FALSE
+    )
+
+    subunit_rows[[length(subunit_rows) + 1]] <- ligand_metrics
+    subunit_rows[[length(subunit_rows) + 1]] <- receptor_metrics
+  }
+
+  expression_support <- do.call(rbind, support_rows)
+  expression_support_subunits <- do.call(rbind, subunit_rows)
+  rownames(expression_support) <- NULL
+  rownames(expression_support_subunits) <- NULL
+
+  support_columns <- setdiff(names(expression_support), names(differential_interactions))
+  differential_interactions_with_expression_support <- cbind(
+    differential_interactions,
+    expression_support[, support_columns, drop = FALSE]
+  )
+
+  list(
+    expression_support = expression_support,
+    expression_support_subunits = expression_support_subunits,
+    differential_interactions_with_expression_support = differential_interactions_with_expression_support
+  )
+}
+
+
+SCassist_compare_interactions_get_expression_data <- function(seurat_object, assay, slot) {
+  if (!assay %in% names(seurat_object@assays)) {
+    return(NULL)
+  }
+
+  expression_data <- tryCatch(
+    {
+      Seurat::GetAssayData(seurat_object, assay = assay, layer = slot)
+    },
+    error = function(e) {
+      NULL
+    }
+  )
+
+  if (is.null(expression_data)) {
+    expression_data <- tryCatch(
+      {
+        Seurat::GetAssayData(seurat_object, assay = assay, slot = slot)
+      },
+      error = function(e) {
+        NULL
+      }
+    )
+  }
+
+  if (is.null(expression_data) || length(expression_data) == 0) {
+    return(NULL)
+  }
+
+  expression_data
+}
+
+
+SCassist_compare_interactions_expression_support_skipped <- function(differential_interactions) {
+  SCassist_compare_interactions_expression_support_disabled(differential_interactions)
+}
+
+
+SCassist_compare_interactions_expression_support_disabled <- function(differential_interactions) {
+  list(
+    expression_support = NULL,
+    expression_support_subunits = NULL,
+    differential_interactions_with_expression_support = differential_interactions
+  )
+}
+
+
+SCassist_compare_interactions_parse_interaction_genes <- function(interaction_row,
+                                                                  expression_genes) {
+  ligand_value <- SCassist_compare_interactions_row_value(interaction_row, "ligand")
+  receptor_value <- SCassist_compare_interactions_row_value(interaction_row, "receptor")
+  interaction_name <- SCassist_compare_interactions_row_value(interaction_row, "interaction_name")
+
+  interaction_tokens <- SCassist_compare_interactions_split_gene_tokens(interaction_name)
+  ligand_tokens <- SCassist_compare_interactions_split_gene_tokens(ligand_value)
+  receptor_tokens <- SCassist_compare_interactions_split_gene_tokens(receptor_value)
+
+  if (length(ligand_tokens) == 0 && length(interaction_tokens) > 0) {
+    ligand_tokens <- interaction_tokens[1]
+  }
+
+  ligand_match <- SCassist_compare_interactions_match_genes(ligand_tokens, expression_genes)
+  interaction_ligand_tokens <- if (length(interaction_tokens) > 0) {
+    interaction_tokens[seq_len(min(max(length(ligand_tokens), 1), length(interaction_tokens)))]
+  } else {
+    character()
+  }
+  interaction_ligand_match <- SCassist_compare_interactions_match_genes(interaction_ligand_tokens, expression_genes)
+  if (length(interaction_ligand_match$matched) > length(ligand_match$matched)) {
+    ligand_match <- interaction_ligand_match
+  }
+  ligand_gene_count <- max(length(ligand_tokens), 1)
+  interaction_receptor_tokens <- if (length(interaction_tokens) > ligand_gene_count) {
+    interaction_tokens[(ligand_gene_count + 1):length(interaction_tokens)]
+  } else {
+    character()
+  }
+
+  receptor_match <- SCassist_compare_interactions_match_genes(receptor_tokens, expression_genes)
+  interaction_receptor_match <- SCassist_compare_interactions_match_genes(interaction_receptor_tokens, expression_genes)
+
+  if (length(interaction_receptor_match$matched) > length(receptor_match$matched)) {
+    receptor_match <- interaction_receptor_match
+  }
+
+  list(
+    ligand_genes = ligand_match$matched,
+    receptor_genes = receptor_match$matched,
+    missing_ligand_genes = ligand_match$missing,
+    missing_receptor_genes = receptor_match$missing
+  )
+}
+
+
+SCassist_compare_interactions_split_gene_tokens <- function(value) {
+  if (length(value) == 0 || is.null(value) || is.na(value) || value == "") {
+    return(character())
+  }
+
+  tokens <- unlist(strsplit(as.character(value), "[_+/;:,[:space:]-]+"))
+  tokens <- tokens[!is.na(tokens) & tokens != ""]
+  unique(tokens)
+}
+
+
+SCassist_compare_interactions_match_genes <- function(candidates, expression_genes) {
+  candidates <- unique(candidates[!is.na(candidates) & candidates != ""])
+  if (length(candidates) == 0) {
+    return(list(matched = character(), missing = character()))
+  }
+
+  matched <- character()
+  missing <- character()
+  upper_genes <- toupper(expression_genes)
+
+  for (candidate in candidates) {
+    exact_index <- match(candidate, expression_genes)
+    if (!is.na(exact_index)) {
+      matched <- c(matched, expression_genes[exact_index])
+    } else {
+      upper_index <- match(toupper(candidate), upper_genes)
+      if (!is.na(upper_index)) {
+        matched <- c(matched, expression_genes[upper_index])
+      } else {
+        missing <- c(missing, candidate)
+      }
+    }
+  }
+
+  list(matched = unique(matched), missing = unique(missing))
+}
+
+
+SCassist_compare_interactions_gene_metrics <- function(genes,
+                                                       missing_genes,
+                                                       expression_data,
+                                                       meta,
+                                                       group_by,
+                                                       condition_by,
+                                                       cell_group,
+                                                       condition_a,
+                                                       condition_b,
+                                                       molecule_role,
+                                                       interaction_row,
+                                                       expected_direction,
+                                                       expression_support_logfc_threshold,
+                                                       expression_support_min_pct,
+                                                       expression_support_pseudocount) {
+  rows <- list()
+
+  for (gene in genes) {
+    metrics <- SCassist_compare_interactions_single_gene_metrics(
+      gene = gene,
+      expression_data = expression_data,
+      meta = meta,
+      group_by = group_by,
+      condition_by = condition_by,
+      cell_group = cell_group,
+      condition_a = condition_a,
+      condition_b = condition_b,
+      pseudocount = expression_support_pseudocount
+    )
+    support <- SCassist_compare_interactions_gene_support_label(
+      logfc = metrics$logfc_condition_b_vs_a,
+      pct_a = metrics$pct_expr_condition_a,
+      pct_b = metrics$pct_expr_condition_b,
+      expected_direction = expected_direction,
+      threshold = expression_support_logfc_threshold,
+      min_pct = expression_support_min_pct
+    )
+    rows[[length(rows) + 1]] <- SCassist_compare_interactions_subunit_row(
+      interaction_row = interaction_row,
+      molecule_role = molecule_role,
+      gene = gene,
+      condition_a = condition_a,
+      condition_b = condition_b,
+      metrics = metrics,
+      expected_direction = expected_direction,
+      support_direction = support$support_direction,
+      support_label = support$support_label
+    )
+  }
+
+  for (gene in missing_genes) {
+    rows[[length(rows) + 1]] <- SCassist_compare_interactions_subunit_row(
+      interaction_row = interaction_row,
+      molecule_role = molecule_role,
+      gene = gene,
+      condition_a = condition_a,
+      condition_b = condition_b,
+      metrics = list(
+        avg_expr_condition_a = NA_real_,
+        avg_expr_condition_b = NA_real_,
+        logfc_condition_b_vs_a = NA_real_,
+        pct_expr_condition_a = NA_real_,
+        pct_expr_condition_b = NA_real_,
+        delta_pct_expr = NA_real_
+      ),
+      expected_direction = expected_direction,
+      support_direction = "missing_gene",
+      support_label = "missing_gene"
+    )
+  }
+
+  if (length(rows) == 0) {
+    return(SCassist_compare_interactions_empty_expression_support_subunits())
+  }
+
+  do.call(rbind, rows)
+}
+
+
+SCassist_compare_interactions_single_gene_metrics <- function(gene,
+                                                              expression_data,
+                                                              meta,
+                                                              group_by,
+                                                              condition_by,
+                                                              cell_group,
+                                                              condition_a,
+                                                              condition_b,
+                                                              pseudocount) {
+  cells_a <- rownames(meta)[
+    as.character(meta[[group_by]]) == cell_group &
+      as.character(meta[[condition_by]]) == condition_a
+  ]
+  cells_b <- rownames(meta)[
+    as.character(meta[[group_by]]) == cell_group &
+      as.character(meta[[condition_by]]) == condition_b
+  ]
+
+  values_a <- SCassist_compare_interactions_expression_values(expression_data, gene, cells_a)
+  values_b <- SCassist_compare_interactions_expression_values(expression_data, gene, cells_b)
+
+  avg_a <- if (length(values_a) > 0) mean(values_a, na.rm = TRUE) else NA_real_
+  avg_b <- if (length(values_b) > 0) mean(values_b, na.rm = TRUE) else NA_real_
+  pct_a <- if (length(values_a) > 0) mean(values_a > 0, na.rm = TRUE) else NA_real_
+  pct_b <- if (length(values_b) > 0) mean(values_b > 0, na.rm = TRUE) else NA_real_
+
+  list(
+    avg_expr_condition_a = avg_a,
+    avg_expr_condition_b = avg_b,
+    logfc_condition_b_vs_a = log2((avg_b + pseudocount) / (avg_a + pseudocount)),
+    pct_expr_condition_a = pct_a,
+    pct_expr_condition_b = pct_b,
+    delta_pct_expr = pct_b - pct_a
+  )
+}
+
+
+SCassist_compare_interactions_expression_values <- function(expression_data, gene, cells) {
+  cells <- intersect(cells, colnames(expression_data))
+  if (length(cells) == 0 || !gene %in% rownames(expression_data)) {
+    return(numeric())
+  }
+
+  as.numeric(expression_data[gene, cells, drop = TRUE])
+}
+
+
+SCassist_compare_interactions_gene_support_label <- function(logfc,
+                                                             pct_a,
+                                                             pct_b,
+                                                             expected_direction,
+                                                             threshold,
+                                                             min_pct) {
+  supports_increase <- !is.na(logfc) && !is.na(pct_b) &&
+    logfc >= threshold && pct_b >= min_pct
+  supports_decrease <- !is.na(logfc) && !is.na(pct_a) &&
+    logfc <= -threshold && pct_a >= min_pct
+
+  if (expected_direction == "increase_in_condition_b") {
+    if (supports_increase) {
+      return(list(
+        support_direction = "increase_in_condition_b",
+        support_label = "supports_increase_in_condition_b"
+      ))
+    }
+    if (supports_decrease) {
+      return(list(support_direction = "decrease_in_condition_b", support_label = "opposite_direction"))
+    }
+  } else if (expected_direction == "decrease_in_condition_b") {
+    if (supports_decrease) {
+      return(list(
+        support_direction = "decrease_in_condition_b",
+        support_label = "supports_decrease_in_condition_b"
+      ))
+    }
+    if (supports_increase) {
+      return(list(support_direction = "increase_in_condition_b", support_label = "opposite_direction"))
+    }
+  } else {
+    if (supports_increase) {
+      return(list(
+        support_direction = "increase_in_condition_b",
+        support_label = "supports_increase_in_condition_b"
+      ))
+    }
+    if (supports_decrease) {
+      return(list(
+        support_direction = "decrease_in_condition_b",
+        support_label = "supports_decrease_in_condition_b"
+      ))
+    }
+  }
+
+  list(support_direction = "weak_or_no_change", support_label = "weak_or_no_change")
+}
+
+
+SCassist_compare_interactions_subunit_row <- function(interaction_row,
+                                                      molecule_role,
+                                                      gene,
+                                                      condition_a,
+                                                      condition_b,
+                                                      metrics,
+                                                      expected_direction,
+                                                      support_direction,
+                                                      support_label) {
+  data.frame(
+    source = as.character(interaction_row$source),
+    target = as.character(interaction_row$target),
+    interaction_name = as.character(interaction_row$interaction_name),
+    pathway_name = as.character(interaction_row$pathway_name),
+    molecule_role = molecule_role,
+    gene = gene,
+    condition_a = condition_a,
+    condition_b = condition_b,
+    avg_expr_condition_a = metrics$avg_expr_condition_a,
+    avg_expr_condition_b = metrics$avg_expr_condition_b,
+    logfc_condition_b_vs_a = metrics$logfc_condition_b_vs_a,
+    pct_expr_condition_a = metrics$pct_expr_condition_a,
+    pct_expr_condition_b = metrics$pct_expr_condition_b,
+    delta_pct_expr = metrics$delta_pct_expr,
+    expected_direction = expected_direction,
+    support_direction = support_direction,
+    support_label = support_label,
+    stringsAsFactors = FALSE
+  )
+}
+
+
+SCassist_compare_interactions_role_expression_summary <- function(metrics, expected_direction) {
+  if (nrow(metrics) == 0) {
+    return(list(
+      avg_expr_condition_a = NA_real_,
+      avg_expr_condition_b = NA_real_,
+      logfc_condition_b_vs_a = NA_real_,
+      pct_expr_condition_a = NA_real_,
+      pct_expr_condition_b = NA_real_,
+      delta_pct_expr = NA_real_,
+      support_label = "insufficient_expression_data"
+    ))
+  }
+
+  available <- metrics[metrics$support_label != "missing_gene", , drop = FALSE]
+  if (nrow(available) == 0) {
+    return(list(
+      avg_expr_condition_a = NA_real_,
+      avg_expr_condition_b = NA_real_,
+      logfc_condition_b_vs_a = NA_real_,
+      pct_expr_condition_a = NA_real_,
+      pct_expr_condition_b = NA_real_,
+      delta_pct_expr = NA_real_,
+      support_label = "insufficient_expression_data"
+    ))
+  }
+
+  support_labels <- metrics$support_label
+  expected_label <- if (expected_direction == "increase_in_condition_b") {
+    "supports_increase_in_condition_b"
+  } else if (expected_direction == "decrease_in_condition_b") {
+    "supports_decrease_in_condition_b"
+  } else {
+    NA_character_
+  }
+
+  role_support <- if ("opposite_direction" %in% support_labels) {
+    "opposite_direction"
+  } else if (!is.na(expected_label) &&
+             all(available$support_label == expected_label) &&
+             !"missing_gene" %in% support_labels) {
+    "supports_expected_direction"
+  } else if (!is.na(expected_label) && expected_label %in% available$support_label) {
+    "partial_support"
+  } else if ("missing_gene" %in% support_labels && nrow(available) == 0) {
+    "insufficient_expression_data"
+  } else if ("missing_gene" %in% support_labels) {
+    "partial_support"
+  } else {
+    "weak_or_no_change"
+  }
+
+  logfc_values <- available$logfc_condition_b_vs_a
+  logfc_summary <- if (expected_direction == "increase_in_condition_b") {
+    min(logfc_values, na.rm = TRUE)
+  } else if (expected_direction == "decrease_in_condition_b") {
+    max(logfc_values, na.rm = TRUE)
+  } else {
+    mean(logfc_values, na.rm = TRUE)
+  }
+
+  if (!is.finite(logfc_summary)) {
+    logfc_summary <- NA_real_
+  }
+
+  list(
+    avg_expr_condition_a = min(available$avg_expr_condition_a, na.rm = TRUE),
+    avg_expr_condition_b = min(available$avg_expr_condition_b, na.rm = TRUE),
+    logfc_condition_b_vs_a = logfc_summary,
+    pct_expr_condition_a = min(available$pct_expr_condition_a, na.rm = TRUE),
+    pct_expr_condition_b = min(available$pct_expr_condition_b, na.rm = TRUE),
+    delta_pct_expr = min(available$delta_pct_expr, na.rm = TRUE),
+    support_label = role_support
+  )
+}
+
+
+SCassist_compare_interactions_expression_support_label <- function(ligand_support,
+                                                                   receptor_support) {
+  if (ligand_support == "insufficient_expression_data" &&
+      receptor_support == "insufficient_expression_data") {
+    return("insufficient_expression_data")
+  }
+
+  if (ligand_support == "opposite_direction" || receptor_support == "opposite_direction") {
+    return("opposite_expression_direction")
+  }
+
+  ligand_strong <- ligand_support == "supports_expected_direction"
+  receptor_strong <- receptor_support == "supports_expected_direction"
+
+  if (ligand_strong && receptor_strong) {
+    return("strong_expression_support")
+  }
+
+  if (ligand_strong || receptor_strong ||
+      ligand_support == "partial_support" ||
+      receptor_support == "partial_support") {
+    return("partial_expression_support")
+  }
+
+  "weak_or_no_expression_support"
+}
+
+
+SCassist_compare_interactions_expression_support_note <- function(parsed_genes,
+                                                                  ligand_support,
+                                                                  receptor_support,
+                                                                  interaction_label) {
+  notes <- character()
+  if (length(parsed_genes$missing_ligand_genes) > 0) {
+    notes <- c(notes, paste0("Missing ligand genes: ", paste(parsed_genes$missing_ligand_genes, collapse = ", ")))
+  }
+  if (length(parsed_genes$missing_receptor_genes) > 0) {
+    notes <- c(notes, paste0("Missing receptor genes: ", paste(parsed_genes$missing_receptor_genes, collapse = ", ")))
+  }
+  notes <- c(
+    notes,
+    paste0("Ligand support: ", ligand_support),
+    paste0("Receptor support: ", receptor_support),
+    paste0("Interaction expression support: ", interaction_label)
+  )
+  paste(notes, collapse = "; ")
+}
+
+
+SCassist_compare_interactions_expected_expression_direction <- function(status) {
+  status <- as.character(status)
+  if (status %in% c("gained_in_condition_b", "increased_in_condition_b")) {
+    return("increase_in_condition_b")
+  }
+  if (status %in% c("lost_in_condition_b", "decreased_in_condition_b")) {
+    return("decrease_in_condition_b")
+  }
+  "not_applicable_for_maintained"
+}
+
+
+SCassist_compare_interactions_row_value <- function(interaction_row, column_name) {
+  if (!column_name %in% names(interaction_row)) {
+    return(NA_character_)
+  }
+  as.character(interaction_row[[column_name]][1])
+}
+
+
+SCassist_compare_interactions_collapse_genes <- function(genes) {
+  genes <- genes[!is.na(genes) & genes != ""]
+  if (length(genes) == 0) {
+    return(NA_character_)
+  }
+  paste(unique(genes), collapse = ";")
+}
+
+
+SCassist_compare_interactions_empty_expression_support <- function() {
+  data.frame(
+    source = character(),
+    target = character(),
+    interaction_name = character(),
+    pathway_name = character(),
+    status = character(),
+    score_condition_a = numeric(),
+    score_condition_b = numeric(),
+    delta_score = numeric(),
+    ligand = character(),
+    receptor = character(),
+    ligand_genes = character(),
+    receptor_genes = character(),
+    missing_ligand_genes = character(),
+    missing_receptor_genes = character(),
+    ligand_avg_expr_condition_a = numeric(),
+    ligand_avg_expr_condition_b = numeric(),
+    ligand_logfc_condition_b_vs_a = numeric(),
+    ligand_pct_expr_condition_a = numeric(),
+    ligand_pct_expr_condition_b = numeric(),
+    ligand_delta_pct_expr = numeric(),
+    receptor_avg_expr_condition_a = numeric(),
+    receptor_avg_expr_condition_b = numeric(),
+    receptor_logfc_condition_b_vs_a = numeric(),
+    receptor_pct_expr_condition_a = numeric(),
+    receptor_pct_expr_condition_b = numeric(),
+    receptor_delta_pct_expr = numeric(),
+    expected_direction = character(),
+    ligand_expression_support = character(),
+    receptor_expression_support = character(),
+    expression_support_label = character(),
+    expression_support_note = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
+
+SCassist_compare_interactions_empty_expression_support_subunits <- function() {
+  data.frame(
+    source = character(),
+    target = character(),
+    interaction_name = character(),
+    pathway_name = character(),
+    molecule_role = character(),
+    gene = character(),
+    condition_a = character(),
+    condition_b = character(),
+    avg_expr_condition_a = numeric(),
+    avg_expr_condition_b = numeric(),
+    logfc_condition_b_vs_a = numeric(),
+    pct_expr_condition_a = numeric(),
+    pct_expr_condition_b = numeric(),
+    delta_pct_expr = numeric(),
+    expected_direction = character(),
+    support_direction = character(),
+    support_label = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
+
+SCassist_compare_interactions_llm_expression_support_summary <- function(expression_support,
+                                                                         expression_support_subunits,
+                                                                         top_n_interactions) {
+  if (is.null(expression_support) || nrow(expression_support) == 0) {
+    return(NULL)
+  }
+
+  list(
+    top_strong_expression_support_interactions = SCassist_compare_interactions_top_expression_support(
+      expression_support,
+      label = "strong_expression_support",
+      n = top_n_interactions
+    ),
+    top_partial_expression_support_interactions = SCassist_compare_interactions_top_expression_support(
+      expression_support,
+      label = "partial_expression_support",
+      n = top_n_interactions
+    ),
+    top_weak_or_no_expression_support_interactions = SCassist_compare_interactions_top_expression_support(
+      expression_support,
+      label = "weak_or_no_expression_support",
+      n = top_n_interactions
+    ),
+    top_opposite_expression_direction_interactions = SCassist_compare_interactions_top_expression_support(
+      expression_support,
+      label = "opposite_expression_direction",
+      n = top_n_interactions
+    ),
+    missing_gene_notes = SCassist_compare_interactions_missing_gene_notes(
+      expression_support,
+      n = top_n_interactions
+    )
+  )
+}
+
+
+SCassist_compare_interactions_top_expression_support <- function(expression_support, label, n) {
+  rows <- expression_support[
+    expression_support$expression_support_label == label,
+    ,
+    drop = FALSE
+  ]
+  if (nrow(rows) == 0) {
+    return(rows)
+  }
+
+  rows <- rows[order(abs(rows$delta_score), decreasing = TRUE), , drop = FALSE]
+  head(rows, n)
+}
+
+
+SCassist_compare_interactions_missing_gene_notes <- function(expression_support, n) {
+  missing_rows <- expression_support[
+    (!is.na(expression_support$missing_ligand_genes) & expression_support$missing_ligand_genes != "") |
+      (!is.na(expression_support$missing_receptor_genes) & expression_support$missing_receptor_genes != ""),
+    ,
+    drop = FALSE
+  ]
+
+  if (nrow(missing_rows) == 0) {
+    return(data.frame())
+  }
+
+  missing_rows <- missing_rows[order(abs(missing_rows$delta_score), decreasing = TRUE), , drop = FALSE]
+  head(
+    missing_rows[, c(
+      "source",
+      "target",
+      "interaction_name",
+      "pathway_name",
+      "missing_ligand_genes",
+      "missing_receptor_genes",
+      "expression_support_label"
+    ), drop = FALSE],
+    n
+  )
+}
+
+
 SCassist_compare_interactions_build_llm_context <- function(metadata,
                                                            global_comparison,
                                                            differential_pathways,
                                                            differential_interactions,
                                                            differential_cell_roles,
                                                            gained_lost_summary,
+                                                           expression_support = NULL,
+                                                           expression_support_subunits = NULL,
                                                            top_n_interactions,
                                                            top_n_pathways,
                                                            experimental_context = NULL) {
-  list(
+  llm_context <- list(
     metadata = metadata,
     global_comparison = global_comparison,
     shared_and_missing_cell_groups = list(
@@ -1284,6 +2213,11 @@ SCassist_compare_interactions_build_llm_context <- function(metadata,
       differential_cell_roles = differential_cell_roles,
       n = top_n_pathways
     ),
+    expression_support_summary = SCassist_compare_interactions_llm_expression_support_summary(
+      expression_support = expression_support,
+      expression_support_subunits = expression_support_subunits,
+      top_n_interactions = top_n_interactions
+    ),
     gained_lost_summary = gained_lost_summary,
     experimental_context = experimental_context,
     interpretation_caveats = c(
@@ -1293,9 +2227,16 @@ SCassist_compare_interactions_build_llm_context <- function(metadata,
       "Protein-level activity and spatial proximity are not directly measured from standard scRNA-seq.",
       "Differences may be influenced by cell group definitions, sequencing depth, cell numbers, normalization, and average expression method.",
       "Phase 2A compares shared cell groups only; condition-specific cell groups are reported but not included in the main pairwise communication comparison.",
-      "Differential interpretation is based on CellChat communication score / information-flow differences, not DEG-supported ligand/receptor logFC analysis."
+      "Differential interpretation is based on CellChat communication score / information-flow differences, not formal DEG-supported ligand/receptor logFC analysis.",
+      "Expression support is based on transcript-level average expression and percent-expressing summaries. It does not prove protein abundance, receptor activation, physical interaction, or functional signaling."
     )
   )
+
+  if (is.null(llm_context$expression_support_summary)) {
+    llm_context$expression_support_summary <- NULL
+  }
+
+  llm_context
 }
 
 
@@ -1329,6 +2270,7 @@ SCassist_compare_interactions_build_llm_prompt <- function(llm_context) {
     "3. Key ligand-receptor axes\n",
     "   - Identify the strongest differential ligand-receptor pairs and the sender-receiver cell groups they connect.\n",
     "   - Separate gained/lost interactions from increased/decreased shared interactions.\n\n",
+    "   - When expression-support metrics are available, distinguish CellChat communication-score changes supported by ligand/receptor expression changes from partially supported changes, weakly supported changes, and directionally inconsistent changes.\n\n",
     "4. Sender and receiver shifts\n",
     "   - Describe which cell groups show increased or decreased outgoing signaling.\n",
     "   - Describe which cell groups show increased or decreased incoming signaling.\n\n",
@@ -1341,7 +2283,8 @@ SCassist_compare_interactions_build_llm_prompt <- function(llm_context) {
     "   - Differences between conditions do not prove causality, protein-level activity, or spatial proximity.\n",
     "   - Gained or lost interactions reflect differences in CellChat-detected/significant communication under the chosen thresholds, not absolute biological presence or absence.\n",
     "   - Phase 2A compares shared cell groups only; condition-specific cell groups are reported but excluded from the main pairwise comparison.\n",
-    "   - Differential interpretation is based on CellChat communication scores and pathway information flow, not DEG-supported ligand/receptor logFC analysis.\n\n",
+    "   - Differential interpretation is based on CellChat communication scores and pathway information flow, not formal DEG-supported ligand/receptor logFC analysis.\n",
+    "   - Expression support is based on transcript-level average expression and percent-expressing summaries. It does not prove protein abundance, receptor activation, physical interaction, or functional signaling.\n\n",
     "7. Suggested follow-up\n",
     "   - Recommend practical validation or follow-up analyses, such as checking ligand/receptor expression, validating key pathways experimentally, comparing additional conditions, or running DEG-supported ligand-receptor analysis.\n\n",
     "Do not invent unsupported pathways, cell types, ligand-receptor pairs, or mechanisms."
@@ -1468,6 +2411,21 @@ SCassist_compare_interactions_write_outputs <- function(comparison_results,
   utils::write.csv(comparison_results$differential_interactions, file = file.path(output_dir, "differential_interactions.csv"), row.names = FALSE)
   utils::write.csv(comparison_results$differential_cell_roles, file = file.path(output_dir, "differential_cell_roles.csv"), row.names = FALSE)
   utils::write.csv(comparison_results$gained_lost_summary, file = file.path(output_dir, "gained_lost_summary.csv"), row.names = FALSE)
+
+  if (!is.null(comparison_results$expression_support)) {
+    utils::write.csv(comparison_results$expression_support, file = file.path(output_dir, "expression_support.csv"), row.names = FALSE)
+  }
+  if (!is.null(comparison_results$expression_support_subunits)) {
+    utils::write.csv(comparison_results$expression_support_subunits, file = file.path(output_dir, "expression_support_subunits.csv"), row.names = FALSE)
+  }
+  if (!is.null(comparison_results$expression_support) &&
+      !is.null(comparison_results$differential_interactions_with_expression_support)) {
+    utils::write.csv(
+      comparison_results$differential_interactions_with_expression_support,
+      file = file.path(output_dir, "differential_interactions_with_expression_support.csv"),
+      row.names = FALSE
+    )
+  }
 
   if (requireNamespace("jsonlite", quietly = TRUE)) {
     jsonlite::write_json(

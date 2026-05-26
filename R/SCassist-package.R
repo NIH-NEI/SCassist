@@ -14,7 +14,7 @@
 #' Recommending k.param and resolution range. 
 #' Predicting cell types.
 #' Performing, analyzing, integrating and summarizing KEGG and GO enrichment.
-#' Inferring, comparing, and interpreting cell-cell communication with CellChat.
+#' Inferring, comparing, and interpreting cell-cell communication with CellChat and transcript-level expression support.
 #' 
 #' @author Vijay Nagarajan PhD, NEI/NIH
 #' @rdname SCassist
